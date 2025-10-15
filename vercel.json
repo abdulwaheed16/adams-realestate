@@ -12,10 +12,17 @@
       "dest": "/static/$1"
     },
     {
+      "src": "/api/(.*)",
+      "dest": "api/index.py"
+    },
+    {
       "src": "/(.*)",
       "dest": "api/index.py"
     }
   ],
   "installCommand": "pip install -r requirements.txt",
-  "buildCommand": "python setup.py"
+  "buildCommand": "python setup.py",
+  "env": {
+    "PYTHON_VERSION": "3.11"
+  }
 }

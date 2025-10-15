@@ -1,41 +1,28 @@
 import os
-import base64
 import logging
-from vercel_blob import put, del_, list
+from vercel_blob import put
 
-class VercelBlobStorage:
-    def __init__(self):
-        self.token = os.environ.get('BLOB_READ_WRITE_TOKEN')
-        if not self.token:
-            logging.warning("BLOB_READ_WRITE_TOKEN not set. File storage will be limited.")
-    
-    async def save_file(self, file_data, filename):
-        if not self.token:
-            # Fallback to base64 encoding for small files
-            if len(file_data) < 1000000:  # 1MB limit
-                return base64.b64encode(file_data).decode('utf-8')
+logger = logging.getLogger(__name__)
+
+def upload_to_blob(file_path, filename):
+    """Upload a file to Vercel Blob storage"""
+    try:
+        token = os.environ.get('BLOB_READ_WRITE_TOKEN')
+        if not token:
+            logger.error("BLOB_READ_WRITE_TOKEN not set")
             return None
         
-        try:
-            blob = await put(filename, file_data, {
-                'access': 'public',
-                'token': self.token
-            })
-            return blob.url
-        except Exception as e:
-            logging.error(f"Failed to save file: {e}")
-            return None
-    
-    async def delete_file(self, filename):
-        if not self.token:
-            return False
+        with open(file_path, 'rb') as f:
+            file_data = f.read()
         
-        try:
-            await del_(filename, {'token': self.token})
-            return True
-        except Exception as e:
-            logging.error(f"Failed to delete file: {e}")
-            return False
-
-# Create a global storage instance
-storage = VercelBlobStorage()
+        blob = put(filename, file_data, {
+            'access': 'public',
+            'token': token
+        })
+        
+        logger.info(f"File uploaded to blob: {blob.url}")
+        return blob.url
+        
+    except Exception as e:
+        logger.error(f"Error uploading to blob: {e}")
+        return None
