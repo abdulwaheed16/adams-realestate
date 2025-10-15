@@ -1,4 +1,3 @@
-# api/storage.py
 import os
 import base64
 import logging

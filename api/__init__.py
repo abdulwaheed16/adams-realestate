@@ -1,53 +1,51 @@
-# api/__init__.py
 import os
-import sys
 import tempfile
 import shutil
-from werkzeug.utils import secure_filename
+import logging
 
-# Create a global file handler instance
-class VercelFileHandler:
-    def __init__(self):
-        # Use a temporary directory for file operations
-        self.temp_dir = tempfile.mkdtemp()
-        os.makedirs(self.temp_dir, exist_ok=True)
-    
-    def save_file(self, file, filename=None):
-        if filename is None:
-            filename = secure_filename(file.filename)
-        
-        filepath = os.path.join(self.temp_dir, filename)
-        file.save(filepath)
-        return filepath
-    
-    def delete_file(self, file_path):
-        try:
-            os.remove(file_path)
-            return True
-        except:
-            return False
-    
-    def get_file_path(self, filename):
-        return os.path.join(self.temp_dir, filename)
-    
-    def cleanup(self):
-        # Clean up temporary files
-        shutil.rmtree(self.temp_dir, ignore_errors=True)
+def patch_app_for_vercel(app_instance):
+    """
+    Patches the Flask app instance to be compatible with Vercel.
+    """
+    logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+    logging.info("Patching Flask app for Vercel deployment...")
 
-file_handler = VercelFileHandler()
+    # 1. Replace permanent folders with a temporary directory
+    temp_dir = tempfile.mkdtemp()
+    app_instance.config['UPLOAD_FOLDER'] = temp_dir
+    app_instance.config['CLIPS_FOLDER'] = temp_dir
+    logging.info(f"Using temporary directory: {temp_dir}")
 
-# Monkey-patch file operations in your app
-def init_app():
-    # Import your app module
-    import app
-    
-    # Override app config for Vercel
-    app.app.config['UPLOAD_FOLDER'] = file_handler.temp_dir
-    app.app.config['CLIPS_FOLDER'] = file_handler.temp_dir
-    
-    # Replace background processing with synchronous processing
+    # 2. Replace the background processing with a synchronous version
     from api.video_processor import process_video_sync
-    app.process_video_in_background = process_video_sync
     
-    # Return the patched app
-    return app.app
+    # Find the original upload_file route and replace it
+    original_upload = app_instance.view_functions.get('upload_file')
+    if original_upload:
+        def new_upload_file():
+            from flask import request, jsonify
+            if 'video' not in request.files:
+                return jsonify({"error": "No video file provided"}), 400
+            
+            file = request.files['video']
+            if file.filename == '':
+                return jsonify({"error": "No selected file"}), 400
+
+            from werkzeug.utils import secure_filename
+            filename = secure_filename(file.filename)
+            video_path = os.path.join(app_instance.config['UPLOAD_FOLDER'], filename)
+            file.save(video_path)
+
+            # Call the NEW synchronous processor instead of starting a thread
+            result = process_video_sync(video_path, confidence_threshold=0.5)
+            
+            # Clean up the temporary directory
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+            return jsonify(result)
+        
+        # Replace the original view function with our new one
+        app_instance.view_functions['upload_file'] = new_upload_file
+        logging.info("Replaced 'upload_file' with a synchronous, Vercel-compatible version.")
+
+    logging.info("Patching complete.")
