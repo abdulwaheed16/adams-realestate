@@ -5,7 +5,7 @@ import logging
 
 def patch_app_for_vercel(app_instance):
     """
-    Patches the Flask app instance to be compatible with Vercel.
+    Patches the Flask app instance to be compatible with Vercel's serverless environment.
     """
     logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
     logging.info("Patching Flask app for Vercel deployment...")
